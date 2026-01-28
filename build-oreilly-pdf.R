@@ -43,40 +43,63 @@ missing_packages <- required_packages[!sapply(required_packages, requireNamespac
 
 if (length(missing_packages) > 0) {
   cat("Installing missing packages:", paste(missing_packages, collapse = ", "), "\n")
-  install.packages(missing_packages, repos = "https://cloud.r-project.org")
+  tryCatch({
+    install.packages(missing_packages, repos = "https://cloud.r-project.org")
+  }, error = function(e) {
+    stop("Failed to install packages: ", e$message, "\nPlease install them manually.")
+  })
 }
 
 # Step 1: Build the book as HTML using Quarto
 cat("\n=== Step 1: Building HTML book with Quarto ===\n")
-system("quarto render --to html")
+exit_code <- system("quarto render --to html")
+if (exit_code != 0) {
+  stop("Quarto HTML build failed with exit code ", exit_code)
+}
+
+# Verify HTML build produced output
+if (!dir.exists("_book") || length(list.files("_book")) == 0) {
+  stop("HTML build did not produce expected output in _book/ directory")
+}
 
 # Step 2: Install htmlbook package for O'Reilly conversion
 cat("\n=== Step 2: Installing htmlbook package ===\n")
 if (!requireNamespace("htmlbook", quietly = TRUE)) {
-  if (!requireNamespace("pak", quietly = TRUE)) {
-    install.packages("pak", repos = "https://cloud.r-project.org")
-  }
-  pak::pak("hadley/htmlbook")
+  tryCatch({
+    if (!requireNamespace("pak", quietly = TRUE)) {
+      install.packages("pak", repos = "https://cloud.r-project.org")
+    }
+    pak::pak("hadley/htmlbook")
+  }, error = function(e) {
+    stop("Failed to install htmlbook package: ", e$message)
+  })
 }
 
 # Step 3: Convert to O'Reilly format
 cat("\n=== Step 3: Converting to O'Reilly format ===\n")
-library(htmlbook)
-htmlbook::convert_book()
+if (!requireNamespace("htmlbook", quietly = TRUE)) {
+  stop("htmlbook package is not available. Please install it manually with: pak::pak('hadley/htmlbook')")
+}
+
+tryCatch({
+  htmlbook::convert_book()
+}, error = function(e) {
+  stop("Failed to convert book to O'Reilly format: ", e$message)
+})
 
 # Step 4: Optionally create PDF from HTML
-# This requires additional tools like wkhtmltopdf or prince
 cat("\n=== Step 4: Creating PDF ===\n")
 cat("O'Reilly conversion complete. HTML files are in the 'oreilly' directory.\n")
 cat("\nTo create a PDF, you can use one of these options:\n")
 cat("1. Use Quarto: quarto render --to pdf\n")
-cat("2. Use wkhtmltopdf: wkhtmltopdf oreilly/*.html r4ds-oreilly.pdf\n")
+cat("2. Use wkhtmltopdf (requires proper file ordering):\n")
+cat("   wkhtmltopdf oreilly/index.html oreilly/ch01.html ... r4ds-oreilly.pdf\n")
 cat("3. Submit to O'Reilly Atlas for official PDF generation\n")
 
 # List output files
 if (dir.exists("oreilly")) {
   cat("\nGenerated O'Reilly files:\n")
-  html_files <- list.files("oreilly", pattern = "[.]html$", full.names = TRUE)
+  html_files <- list.files("oreilly", pattern = "\\.html$", full.names = TRUE)
   cat(paste(html_files, collapse = "\n"), "\n")
 }
 
